@@ -12,6 +12,7 @@ def _now() -> datetime:
 class Tutor(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
+    description: str = ""  # descricao curta exibida no widget/admin
     status: str = Field(default="active")  # active | inactive
     system_instructions: str = ""
     # Fontes de conhecimento: lista de URLs (sem vector DB).

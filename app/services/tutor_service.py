@@ -12,6 +12,7 @@ from app.schemas.tutor import TutorCreate, TutorUpdate
 def create_tutor(db: Session, data: TutorCreate) -> Tutor:
     tutor = Tutor(
         title=data.title,
+        description=data.description,
         system_instructions=data.system_instructions,
         sources=data.sources,
         allowed_origins=data.allowed_origins,

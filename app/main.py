@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, chat, tutors
+from app.api.routes import auth, chat, embed, tutors
 from app.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
@@ -34,6 +34,7 @@ app.add_middleware(
 register_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(tutors.router)
+app.include_router(embed.router)
 app.include_router(chat.router)
 
 

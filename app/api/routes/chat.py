@@ -5,6 +5,7 @@ instrucoes, fontes e limites sao resolvidos no servidor (nunca confiar no front)
 """
 
 import asyncio
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import Session
@@ -49,7 +50,7 @@ async def chat(body: ChatRequest, request: Request, db: Session = Depends(get_se
     # Orcamento de tokens por sessao: resposta graciosa, sem chamar o LLM.
     if convo.budget_exceeded(session):
         logger.warning("budget exceeded", extra={"event": {"session": session.id}})
-        return EventSourceResponse(_stream_text(BUDGET_MSG, session.id))
+        return EventSourceResponse(_stream_error("limit_reached", BUDGET_MSG))
 
     convo.add_message(db, session.id, "user", body.message)
     history = [
@@ -83,7 +84,13 @@ async def chat(body: ChatRequest, request: Request, db: Session = Depends(get_se
 async def _stream_text(text: str, session_id: str):
     # ponytail: entrega o texto ja gerado em blocos via SSE. Streaming token a token
     # direto do modelo fica como proximo passo (o transporte SSE ja esta pronto).
+    # Cada frame carrega JSON no campo data: (o front le so o data: e faz JSON.parse).
+    yield {"data": json.dumps({"type": "session", "session_id": str(session_id)})}
     for word in text.split(" "):
-        yield {"event": "token", "data": word + " "}
+        yield {"data": json.dumps({"type": "token", "content": word + " "})}
         await asyncio.sleep(0)
-    yield {"event": "done", "data": session_id}
+    yield {"data": json.dumps({"type": "done"})}
+
+
+async def _stream_error(code: str, message: str):
+    yield {"data": json.dumps({"type": "error", "code": code, "message": message})}

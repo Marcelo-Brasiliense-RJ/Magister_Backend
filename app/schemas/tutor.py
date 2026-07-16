@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 class TutorCreate(BaseModel):
     title: str
+    description: str = ""
     system_instructions: str = ""
     sources: list[str] = []
     allowed_origins: list[str] = []
@@ -14,6 +15,7 @@ class TutorCreate(BaseModel):
 
 class TutorUpdate(BaseModel):
     title: str | None = None
+    description: str | None = None
     system_instructions: str | None = None
     sources: list[str] | None = None
     allowed_origins: list[str] | None = None
@@ -26,6 +28,7 @@ class StatusUpdate(BaseModel):
 class TutorRead(BaseModel):
     id: int
     title: str
+    description: str
     status: str
     system_instructions: str
     sources: list[str]
