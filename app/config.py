@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,6 +40,26 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def _require_strong_secrets(self) -> "Settings":
+        # Fora de development, credenciais fracas tornam o JWT forjavel: falha o boot.
+        if self.app_env == "development":
+            return self
+        weak_secret = (
+            not self.jwt_secret
+            or self.jwt_secret == "dev-secret-change-me"
+            or len(self.jwt_secret) < 32
+        )
+        if weak_secret:
+            raise ValueError(
+                "JWT_SECRET fraco/ausente: defina um segredo forte fora de development."
+            )
+        if not self.admin_password_hash:
+            raise ValueError(
+                "ADMIN_PASSWORD_HASH ausente: defina a credencial do admin fora de development."
+            )
+        return self
 
 
 @lru_cache

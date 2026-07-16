@@ -10,7 +10,8 @@ _DB = os.path.join(tempfile.gettempdir(), "magister_test.db")
 os.environ.update(
     {
         "APP_ENV": "test",
-        "JWT_SECRET": "test-secret",
+        # >=32 chars: env "test" e nao-dev, entao a validacao de segredo forte se aplica.
+        "JWT_SECRET": "test-secret-0123456789abcdef0123456789",
         "ADMIN_USERNAME": "admin",
         "ADMIN_PASSWORD_HASH": bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode(),
         "DATABASE_URL": f"sqlite:///{_DB}",
