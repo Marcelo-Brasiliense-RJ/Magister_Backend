@@ -6,6 +6,51 @@ Backend do **Magister**, plataforma B2B onde administradores criam tutores de IA
 > Codigo produzido **via agentes de codificacao** (agentes backend, frontend e
 > seguranca), conforme exigido pelo PRD do desafio. Este repositorio e o do backend.
 
+## Arquitetura
+
+```mermaid
+flowchart TB
+  subgraph Integrador["Site do integrador"]
+    IF["iframe: /embed?token=…"]
+  end
+  subgraph FE["Frontend — React + Vite (repo separado)"]
+    Admin["Painel Admin<br/>login JWT + CRUD tutores + snippet embed"]
+    Widget["Widget de chat<br/>rota /embed"]
+  end
+  subgraph BE["Backend — FastAPI (este repo)"]
+    AuthAPI["Auth<br/>POST /api/auth/login (JWT)"]
+    AdminAPI["REST Admin<br/>protegida: JWT"]
+    ChatAPI["Chat API<br/>SSE stream (embed token)"]
+    subgraph AG["Orquestração multi-agente — LangGraph"]
+      SUP["Supervisor / Router"]
+      KN["Knowledge Agent"]
+      PE["Persona Agent"]
+      GD["Guardrail Agent"]
+      CP["Compactação<br/>resumo rolante"]
+    end
+    Tools["Tools: fetch_source / list_sources / summarize<br/>(SSRF guard)"]
+  end
+  DB[("SQLite<br/>tutores + sessões + mensagens")]
+  LLM["LLM Router (custo)<br/>Groq → OpenRouter + failover"]
+  SRC["Fontes externas<br/>URLs HTTP do tutor"]
+  IF --> Widget
+  Admin --> AuthAPI
+  Admin --> AdminAPI
+  Widget --> ChatAPI
+  ChatAPI --> SUP
+  SUP --> GD
+  SUP --> KN
+  KN --> Tools
+  Tools --> SRC
+  SUP --> PE
+  SUP --> CP
+  KN --> LLM
+  PE --> LLM
+  GD --> LLM
+  AdminAPI --> DB
+  ChatAPI --> DB
+```
+
 ## Stack
 
 - **FastAPI** + **SQLModel/SQLAlchemy** sobre **SQLite**.
