@@ -1,0 +1,13 @@
+title = "Magister backend - gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Falsos positivos aceitos. O embed token e publico (nao e segredo)."
+regexes = [
+  '''embed_token''',
+]
+paths = [
+  '''\.env\.example$''',
+]

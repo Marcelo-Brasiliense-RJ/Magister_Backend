@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Bloqueia commit com segredo no stage. Ativar por clone:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --config .gitleaks.toml
+else
+  echo "[pre-commit] gitleaks nao instalado; scan pulado. O gate obrigatorio deve rodar no CI." >&2
+fi
