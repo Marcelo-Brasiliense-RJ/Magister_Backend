@@ -72,7 +72,14 @@ def complete(
     max_out = max_output_tokens or _settings.max_output_tokens
     last_error: Exception | None = None
     for provider in providers:
-        model = _settings.llm_task_models.get(task) or provider["model"]
+        # Modelo por tarefa: override do provedor primeiro (ids diferem entre
+        # provedores, ex.: 70B no Groq vs OpenRouter), depois mapa global, senao
+        # o modelo padrao do provedor. Mantem o failover funcionando por tarefa.
+        model = (
+            provider.get("task_models", {}).get(task)
+            or _settings.llm_task_models.get(task)
+            or provider["model"]
+        )
         try:
             text, tokens = _call(provider, model, messages, max_out)
             logger.info(

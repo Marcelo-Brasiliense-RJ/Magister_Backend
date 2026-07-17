@@ -41,3 +41,25 @@ def test_task_model_override(monkeypatch):
     monkeypatch.setattr(llm._settings, "llm_task_models", {"summarize": "modelo-barato"})
     llm.complete([{"role": "user", "content": "oi"}], task="summarize")
     assert seen["model"] == "modelo-barato"
+
+
+def test_per_provider_task_model_survives_failover(monkeypatch):
+    # O id do modelo forte difere entre provedores; no failover cada um deve usar o seu.
+    seen = []
+
+    def fake_call(provider, model, messages, max_output_tokens):
+        seen.append((provider["name"], model))
+        if provider["name"] == "groq":
+            raise RuntimeError("down")  # forca cair no fallback
+        return "x", 1
+
+    providers = [
+        {"name": "groq", "base_url": "http://g", "api_key": "k",
+         "model": "8b-groq", "task_models": {"persona": "70b-groq"}, "priority": 1},
+        {"name": "openrouter", "base_url": "http://o", "api_key": "k",
+         "model": "8b-or", "task_models": {"persona": "70b-or"}, "priority": 2},
+    ]
+    monkeypatch.setattr(llm._settings, "llm_providers", providers)
+    monkeypatch.setattr(llm, "_call", fake_call)
+    llm.complete([{"role": "user", "content": "oi"}], task="persona")
+    assert seen == [("groq", "70b-groq"), ("openrouter", "70b-or")]
