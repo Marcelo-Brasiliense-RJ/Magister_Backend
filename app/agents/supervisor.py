@@ -1,4 +1,6 @@
-"""No supervisor: roteia o fluxo (precisa de conhecimento? finalizar?)."""
+"""No supervisor: roteia o fluxo (precisa de conhecimento? finalizar? escalar?)."""
+
+from app.agents.prompts import ESCALATION_MARKER
 
 
 def supervisor(state: dict) -> dict:
@@ -17,3 +19,15 @@ def route_after_input(state: dict) -> str:
 
 def route_after_supervisor(state: dict) -> str:
     return "knowledge" if state.get("needs_knowledge") else "compaction"
+
+
+def route_after_persona(state: dict) -> str:
+    # Escala ao Reitor so quando o tutor sinalizou (marcador), tem fallback ligado
+    # e existe um tutor is_fallback. Senao segue para o guardrail (que sanitiza o
+    # marcador residual). O Reitor nunca passa por aqui (guardrail_output direto).
+    escalate = (
+        ESCALATION_MARKER in state.get("response", "")
+        and state.get("escalation_enabled")
+        and state.get("fallback")
+    )
+    return "reitor" if escalate else "guardrail_output"

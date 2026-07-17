@@ -174,5 +174,10 @@ Auditoria dos dois repositórios: **13 de 14 itens do §5 OK**, verificados no c
 | 2 | SSRF TOCTOU / DNS rebinding: `assert_safe_url` valida via `getaddrinfo`, mas o `httpx` resolve o DNS de novo ao conectar | Média | **Próximo passo**: fixar o IP validado na conexão (transporte `httpx` custom). O `follow_redirects=False` já fecha o vetor por redirect |
 | 3 | `JWT_SECRET` com default fraco iniciava o app silenciosamente | Média | **Corrigido**: `Settings` falha o boot fora de `development` se `JWT_SECRET` for fraco/ausente ou `ADMIN_PASSWORD_HASH` vazio |
 | 4 | `allowed_origins` vazio libera qualquer origem (marcado "apenas dev") | Baixa | **Documentado**: aceitável no MVP (mitigado por rate limit + orçamento de tokens; embed token é público por design). Exigir `allowed_origins` na criação antes de produção |
+| 5 | Conversa-modelo `demo-<token>` era compartilhada e gravável por visitantes (vazamento de conteúdo entre visitantes + DoS de orçamento) | Média | **Corrigido**: o template `demo-<token>` é somente leitura; o resume virou `POST /api/embed/{token}/session` que **minta um uuid novo por visitante** e clona o template (o cliente nunca envia `session_id`, evitando IDOR). O `POST /api/chat` rejeita (400) `session_id` com o prefixo reservado `demo-`. Cada sessão de visitante tem histórico e orçamento próprios |
+| 6 | Resume sem rate limit | Baixa | **Corrigido**: `POST /api/embed/{token}/session` usa o mesmo limitador do chat (por IP), pois também cria estado |
+
+Pendência registrada em "Próximos passos" do README: TTL/limpeza das sessões de demo
+clonadas (cada resume cria uma sessão nova; as linhas acumulam sem expurgo).
 
 Infra de deploy real (WAF, rotação de chaves em cofre) permanece em §6.

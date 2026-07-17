@@ -75,7 +75,7 @@ flowchart TB
 ### Topologia do grafo
 
 ```
-guardrail_input -> supervisor -> [knowledge?] -> compaction -> persona -> guardrail_output
+guardrail_input -> supervisor -> [knowledge?] -> compaction -> persona -> [reitor?] -> guardrail_output
 ```
 
 - **guardrail_input**: barra prompt-injection (regex) antes de gastar LLM.
@@ -83,10 +83,35 @@ guardrail_input -> supervisor -> [knowledge?] -> compaction -> persona -> guardr
 - **knowledge**: usa as tools (whitelist) sobre `tutor.sources`, com SSRF guard.
 - **compaction**: resumo rolante quando a janela de 40 mensagens enche.
 - **persona**: gera a resposta com `system_instructions` + contexto + historico.
-- **guardrail_output**: evita vazamento do bloco de seguranca.
+- **reitor**: no de fallback. Responde a mesma pergunta com as instrucoes do tutor
+  `is_fallback`, sem fontes. Terminal (nao escala de novo).
+- **guardrail_output**: evita vazamento do bloco de seguranca e do marcador de escalada.
 
 Estado compartilhado: `{tutor, user_message, history, rolling_summary,
-compiled_context, needs_knowledge, response, tokens_used, safety}`.
+compiled_context, needs_knowledge, response, tokens_used, safety, escalation_enabled,
+fallback, session_id}`.
+
+### Escalada ao Reitor
+
+Quando um tutor tematico nao sabe responder (foge das fontes/escopo), a conversa
+escala para o **Reitor** (tutor de fallback) dentro da mesma sessao, sem o visitante
+trocar de iframe.
+
+- Gatilho: a persona do tutor tematico e instruida a responder **apenas** com o
+  marcador `[[ESCALAR]]` quando nao souber (ver `app/agents/prompts.py`).
+- Apos a persona, uma aresta condicional (`route_after_persona`) verifica: resposta
+  tem o marcador **e** `fallback_enabled=true` **e** existe um tutor `is_fallback`.
+  Se sim, roteia para o no `reitor`; senao, segue para `guardrail_output`.
+- O `guardrail_output` e o unico chokepoint: o marcador `[[ESCALAR]]` **nunca** vaza
+  ao usuario. Sem Reitor disponivel, vira um "nao sei" honesto.
+- Cada escalada emite log estruturado (`event="escalation"`, tutor de origem, tutor
+  de destino, session id).
+- `ponytail`: a escalada depende do LLM emitir exatamente `[[ESCALAR]]`. Aceitavel no
+  MVP; upgrade path = saida estruturada `{answer, can_answer}`.
+
+Controle por tutor: `is_fallback` marca o Reitor (definido no seed, nao editavel pela
+API); `fallback_enabled` liga/desliga a escalada de um tutor tematico (editavel via
+`PUT /api/tutors/{id}`).
 
 ## Como subir localmente
 
@@ -137,7 +162,12 @@ valores reais; `.env` e ignorado pelo git.
 | PATCH | `/api/tutors/{id}/status` | JWT | Ativa/desativa |
 | GET | `/api/tutors/{id}/embed` | JWT | Snippet `<iframe>` + embed token |
 | GET | `/api/embed/{embed_token}` | publica | Config publica do widget (titulo + saudacao) |
+| POST | `/api/embed/{embed_token}/session` | publica | Clona a conversa-modelo numa sessao nova (resume) |
 | POST | `/api/chat` | embed token | Chat do widget (SSE) |
+
+O payload de tutor (create/update/list/detail) inclui `is_fallback` (bool, so leitura)
+e `fallback_enabled` (bool, editavel por create/update). `is_fallback` e definido no
+seed e nao e editavel pela API.
 
 ### Fluxo de embed ponta a ponta
 
@@ -148,6 +178,41 @@ valores reais; `.env` e ignorado pelo git.
 4. O integrador cola o snippet no site. O widget (frontend) chama
    `POST /api/chat {embed_token, message}`; o backend valida tutor ativo +
    origem, aplica rate limit e orcamento de tokens, roda o grafo e faz stream SSE.
+
+### Conversa-modelo continuavel (resume)
+
+Para o visitante abrir o widget e continuar de onde a demo parou, o backend semeia
+uma sessao-modelo (template) no startup (via `seed_demo_session`) vinculada ao embed
+token do tutor "Suporte de Matriculas". Ela ja contem uma pergunta fora de escopo
+respondida pelo Reitor (escalada).
+
+- **Resume:** `POST /api/embed/{embed_token}/session` (cria estado, por isso POST).
+  O cliente **nunca** envia `session_id` (evita IDOR). Retorna
+  `{"session_id": str | null, "messages": [{"role", "content"}, ...]}`.
+- **Clone por visitante:** o template `demo-<embed_token>` e **somente leitura**. A cada
+  resume, o servidor **minta um uuid novo**, clona as mensagens do template para essa
+  sessao e a devolve. Assim cada visitante tem historico e orcamento de tokens proprios,
+  sem vazamento entre visitantes. O widget usa o `session_id` retornado no `POST /api/chat`
+  para continuar **com contexto**.
+- **Prefixo reservado `demo-`:** o `POST /api/chat` rejeita (HTTP 400) qualquer
+  `session_id` que comece com `demo-`; ninguem consegue escrever/inflar o template mesmo
+  adivinhando o id.
+- **Rate limit:** o resume usa o mesmo limitador do chat (por IP), pois tambem cria estado.
+- Sem sessao-modelo para o token, `session_id` vem `null` e `messages` vazio.
+
+### Regenerar o banco/seed
+
+O banco SQLite e apenas dado de demonstracao. Os campos `is_fallback`/`fallback_enabled`
+e a sessao-modelo sao criados pelo seed no startup (idempotente). Para regenerar do zero
+apos mudar o schema ou o seed:
+
+```bash
+rm magister.db           # remova o banco local
+uvicorn app.main:app --reload   # o startup recria o schema e roda o seed
+```
+
+O `create_all` nao altera tabelas existentes; por isso, ao adicionar colunas ao modelo,
+apague `magister.db` para que o schema seja recriado.
 
 ## Seguranca
 
@@ -175,3 +240,12 @@ pytest
   modelo fica como proximo passo (o transporte SSE ja esta pronto).
 - Admin unico via env (sem tabela de usuarios / refresh token).
 - CSP `frame-ancestors` da pagina do widget e responsabilidade do frontend.
+
+## Proximos passos
+
+PostgreSQL; refresh token / OAuth / multiplos admins; multi-tenant; observabilidade
+(LangSmith/OpenTelemetry); cache de fontes e de respostas; WebSocket como alternativa
+ao SSE; persistencia de estado/checkpoints no LangGraph; streaming token a token;
+escalada por saida estruturada (`{answer, can_answer}`) em vez do marcador textual;
+TTL/limpeza das sessoes de demo clonadas (cada resume cria uma sessao nova, as linhas
+acumulam sem expurgo).

@@ -4,6 +4,7 @@ from app.agents.prompts import build_system_prompt
 from app.agents.tools import summarize
 from app.config import get_settings
 from app.core import llm
+from app.core.logging import logger
 
 _settings = get_settings()
 
@@ -28,9 +29,38 @@ def persona(state: dict) -> dict:
         tutor.get("system_instructions", ""),
         state.get("compiled_context", ""),
         state.get("rolling_summary", ""),
+        # So instrui a emitir o marcador quando ha escalada possivel (tutor
+        # tematico com fallback ligado). Senao o tutor responde por conta propria.
+        escalation=bool(state.get("escalation_enabled")),
     )
     messages = [{"role": "system", "content": system}]
     messages += state.get("history", [])
     messages.append({"role": "user", "content": state.get("user_message", "")})
     text, tokens = llm.complete(messages, task="persona")
+    return {"response": text, "tokens_used": state.get("tokens_used", 0) + tokens}
+
+
+def reitor(state: dict) -> dict:
+    """No de fallback: o Reitor responde a mesma pergunta sem fontes. Terminal (nao escala)."""
+    fallback = state.get("fallback", {})
+    system = build_system_prompt(
+        fallback.get("system_instructions", ""),
+        "",  # o Reitor nao usa fontes
+        state.get("rolling_summary", ""),
+    )
+    messages = [{"role": "system", "content": system}]
+    messages += state.get("history", [])
+    messages.append({"role": "user", "content": state.get("user_message", "")})
+    text, tokens = llm.complete(messages, task="persona")
+    logger.info(
+        "escalation",
+        extra={
+            "event": {
+                "event": "escalation",
+                "from_tutor": state.get("tutor", {}).get("title"),
+                "to_tutor": fallback.get("title"),
+                "session_id": state.get("session_id"),
+            }
+        },
+    )
     return {"response": text, "tokens_used": state.get("tokens_used", 0) + tokens}

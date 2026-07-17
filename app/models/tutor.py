@@ -20,5 +20,9 @@ class Tutor(SQLModel, table=True):
     embed_token: str = Field(index=True, unique=True)
     # Origens permitidas para o widget; vazio = qualquer (apenas dev).
     allowed_origins: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    # Escalada ao Reitor: is_fallback marca o Reitor (no maximo um tutor true);
+    # fallback_enabled liga o encaminhamento ao Reitor quando o tutor nao sabe.
+    is_fallback: bool = Field(default=False, index=True)
+    fallback_enabled: bool = Field(default=True)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

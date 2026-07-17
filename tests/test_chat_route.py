@@ -89,3 +89,34 @@ def test_chat_budget_exceeded_graceful(client, db, mock_llm):
 def test_chat_unknown_token_forbidden(client, mock_llm):
     resp = client.post("/api/chat", json={"embed_token": "nao-existe", "message": "oi"})
     assert resp.status_code == 403
+
+
+def test_chat_rejects_reserved_session_id(client, db, mock_llm):
+    tutor = _new_tutor(db)
+    resp = client.post(
+        "/api/chat",
+        json={"embed_token": tutor.embed_token, "message": "oi", "session_id": "demo-hack"},
+    )
+    assert resp.status_code == 400  # prefixo reservado a templates
+    assert mock_llm == []  # rejeitado antes do LLM
+
+
+def test_visitor_chat_does_not_mutate_template(client, db, mock_llm):
+    # Resume clona o template numa sessao nova; o chat do visitante nao toca o template
+    # nem vaza para a proxima sessao clonada.
+    token = "tkn_9f2a7c41e0b3"  # tutor-modelo semeado no startup
+    resume = client.post(f"/api/embed/{token}/session").json()
+    client.post(
+        "/api/chat",
+        json={
+            "embed_token": token,
+            "message": "pergunta do visitante",
+            "session_id": resume["session_id"],
+        },
+    )
+    # Template intacto (4 msgs semeadas).
+    assert convo.count_messages(db, f"demo-{token}") == 4
+    # Novo resume nao contem a mensagem do visitante anterior.
+    second = client.post(f"/api/embed/{token}/session").json()
+    assert second["session_id"] != resume["session_id"]
+    assert all(m["content"] != "pergunta do visitante" for m in second["messages"])

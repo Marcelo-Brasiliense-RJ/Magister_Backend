@@ -11,10 +11,14 @@ o no de conhecimento (fetch_source). allowed_origins=[] libera qualquer origem
 (apenas dev/demo), para o preview funcionar de qualquer host.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from sqlmodel import Session, select
 
 from app.database import engine
+from app.models.conversation import ChatSession, Message
 from app.models.tutor import Tutor
+from app.services import conversation_service as convo
 
 _DEMO_TUTORS = [
     {
@@ -90,6 +94,7 @@ _DEMO_TUTORS = [
         "title": "Reitor",
         "description": "Fallback em linguagem natural, responde o que os tutores não sabem",
         "embed_token": "tkn_reitor_1a2b3c",
+        "is_fallback": True,  # o Reitor e o tutor de fallback (no maximo um)
         "system_instructions": (
             'Você é o "Reitor", a última instância de atendimento e o fallback da plataforma. Você '
             "recebe apenas dúvidas que os outros tutores não souberam responder ou que fogem do "
@@ -100,7 +105,8 @@ _DEMO_TUTORS = [
             "direcione ao setor competente. Faça uma pergunta de esclarecimento quando a dúvida "
             "estiver vaga. Sempre feche com um próximo passo prático: qual setor procurar "
             "(secretaria acadêmica, assuntos financeiros, biblioteca) ou como abrir um chamado. "
-            "Não invente políticas, não prometa resultados e não solicite dados sensíveis pelo chat."
+            "Não invente políticas, não prometa resultados e não solicite dados sensíveis "
+            "pelo chat."
         ),
     },
 ]
@@ -122,8 +128,57 @@ def seed_demo_tutors() -> None:
                     sources=[],
                     embed_token=data["embed_token"],
                     allowed_origins=[],
+                    is_fallback=data.get("is_fallback", False),
+                    fallback_enabled=data.get("fallback_enabled", True),
                 )
             )
             created += 1
         if created:
             db.commit()
+
+
+# Conversa-modelo: token do tutor tematico dono da sessao de demonstracao.
+_DEMO_SESSION_TOKEN = "tkn_9f2a7c41e0b3"  # Suporte de Matrículas
+# Trocas semeadas: a ultima pergunta foge do escopo e foi respondida pelo Reitor
+# (o backend salva a resposta final da escalada, nao o marcador).
+_DEMO_SESSION_MESSAGES = [
+    ("user", "Quais documentos preciso para a matrícula 2026?"),
+    (
+        "assistant",
+        "Para a matrícula 2026 você precisa de RG, CPF, comprovante de residência e "
+        "histórico escolar do ensino médio. O envio é feito pelo Portal do Aluno, na "
+        "seção Matrículas. Quer que eu detalhe alguma dessas etapas?",
+    ),
+    ("user", "E tem vaga de estacionamento no campus para os calouros?"),
+    (
+        "assistant",
+        "Aqui é o Reitor. Essa dúvida foge do escopo de matrículas, então assumo a "
+        "resposta. Não tenho os dados oficiais de estacionamento confirmados, mas o "
+        "setor de infraestrutura do campus é quem controla as vagas. Recomendo abrir "
+        "um chamado ou falar com a secretaria acadêmica para confirmar disponibilidade.",
+    ),
+]
+
+
+def seed_demo_session() -> None:
+    """Semeia a conversa-modelo (idempotente por session id) para o widget resumir."""
+    with Session(engine) as db:
+        tutor = db.exec(select(Tutor).where(Tutor.embed_token == _DEMO_SESSION_TOKEN)).first()
+        if not tutor:
+            return
+        session_id = convo.demo_session_id(_DEMO_SESSION_TOKEN)
+        if db.get(ChatSession, session_id):
+            return
+        db.add(ChatSession(id=session_id, tutor_id=tutor.id))
+        # created_at crescente garante a ordem cronologica no resume.
+        base = datetime.now(timezone.utc)
+        for i, (role, content) in enumerate(_DEMO_SESSION_MESSAGES):
+            db.add(
+                Message(
+                    session_id=session_id,
+                    role=role,
+                    content=content,
+                    created_at=base + timedelta(seconds=i),
+                )
+            )
+        db.commit()

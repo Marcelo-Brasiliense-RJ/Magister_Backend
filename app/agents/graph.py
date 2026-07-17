@@ -1,7 +1,8 @@
 """StateGraph LangGraph: Supervisor + Knowledge + Persona + Guardrail + compactacao.
 
 Fluxo: guardrail_input -> supervisor -> [knowledge?] -> compaction -> persona
--> guardrail_output. Arestas condicionais decidem bloqueio e busca de contexto.
+-> [reitor?] -> guardrail_output. Arestas condicionais decidem bloqueio, busca
+de contexto e escalada ao Reitor (fallback) quando o tutor sinaliza que nao sabe.
 """
 
 from typing import TypedDict
@@ -10,8 +11,13 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.guardrail import guardrail_input, guardrail_output
 from app.agents.knowledge import knowledge
-from app.agents.persona import compaction, persona
-from app.agents.supervisor import route_after_input, route_after_supervisor, supervisor
+from app.agents.persona import compaction, persona, reitor
+from app.agents.supervisor import (
+    route_after_input,
+    route_after_persona,
+    route_after_supervisor,
+    supervisor,
+)
 
 
 class AgentState(TypedDict, total=False):
@@ -24,6 +30,10 @@ class AgentState(TypedDict, total=False):
     response: str
     tokens_used: int
     safety: dict
+    # Escalada ao Reitor
+    escalation_enabled: bool
+    fallback: dict
+    session_id: str
 
 
 def build_graph():
@@ -33,6 +43,7 @@ def build_graph():
     g.add_node("knowledge", knowledge)
     g.add_node("compaction", compaction)
     g.add_node("persona", persona)
+    g.add_node("reitor", reitor)
     g.add_node("guardrail_output", guardrail_output)
 
     g.set_entry_point("guardrail_input")
@@ -44,7 +55,12 @@ def build_graph():
     )
     g.add_edge("knowledge", "compaction")
     g.add_edge("compaction", "persona")
-    g.add_edge("persona", "guardrail_output")
+    g.add_conditional_edges(
+        "persona",
+        route_after_persona,
+        {"reitor": "reitor", "guardrail_output": "guardrail_output"},
+    )
+    g.add_edge("reitor", "guardrail_output")  # Reitor e terminal (nao reescala)
     g.add_edge("guardrail_output", END)
     return g.compile()
 

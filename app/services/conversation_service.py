@@ -9,6 +9,37 @@ from app.models.conversation import ChatSession, Message
 
 _settings = get_settings()
 
+# Prefixo reservado das sessoes-modelo (templates de demo). Sessoes de visitante
+# nunca usam esse prefixo; o cliente nao pode escrever numa sessao "demo-*".
+RESERVED_SESSION_PREFIX = "demo-"
+
+
+def demo_session_id(embed_token: str) -> str:
+    return f"{RESERVED_SESSION_PREFIX}{embed_token}"
+
+
+def clone_session(db: Session, tutor_id: int, messages: list[Message]) -> ChatSession:
+    """Minta uma sessao de visitante (uuid) e clona as mensagens do template.
+
+    O template fica somente leitura; cada visitante recebe historico e orcamento
+    proprios, sem vazamento entre sessoes.
+    """
+    session = ChatSession(id=str(uuid.uuid4()), tutor_id=tutor_id)
+    db.add(session)
+    for m in messages:
+        # copia created_at para preservar a ordem cronologica ao continuar a conversa
+        db.add(
+            Message(
+                session_id=session.id,
+                role=m.role,
+                content=m.content,
+                created_at=m.created_at,
+            )
+        )
+    db.commit()
+    db.refresh(session)
+    return session
+
 
 def get_or_create_session(db: Session, tutor_id: int, session_id: str | None) -> ChatSession:
     if session_id:

@@ -10,7 +10,7 @@ from app.config import get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
 from app.database import init_db
-from app.seed import seed_demo_tutors
+from app.seed import seed_demo_session, seed_demo_tutors
 
 _settings = get_settings()
 
@@ -20,6 +20,7 @@ async def lifespan(_: FastAPI):
     setup_logging()
     init_db()
     seed_demo_tutors()  # tutores de demo para o preview do admin (idempotente)
+    seed_demo_session()  # conversa-modelo continuavel (idempotente)
     yield
 
 

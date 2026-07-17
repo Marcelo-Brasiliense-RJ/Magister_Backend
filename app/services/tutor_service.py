@@ -16,6 +16,7 @@ def create_tutor(db: Session, data: TutorCreate) -> Tutor:
         system_instructions=data.system_instructions,
         sources=data.sources,
         allowed_origins=data.allowed_origins,
+        fallback_enabled=data.fallback_enabled,
         embed_token=generate_embed_token(),
     )
     db.add(tutor)
@@ -34,6 +35,13 @@ def get_tutor(db: Session, tutor_id: int) -> Tutor | None:
 
 def get_by_embed_token(db: Session, token: str) -> Tutor | None:
     return db.exec(select(Tutor).where(Tutor.embed_token == token)).first()
+
+
+def get_fallback_tutor(db: Session) -> Tutor | None:
+    """O Reitor (is_fallback=True). No maximo um; retorna o primeiro ativo."""
+    return db.exec(
+        select(Tutor).where(Tutor.is_fallback.is_(True), Tutor.status == "active")
+    ).first()
 
 
 def update_tutor(db: Session, tutor: Tutor, data: TutorUpdate) -> Tutor:

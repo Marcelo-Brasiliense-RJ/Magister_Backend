@@ -2,6 +2,14 @@
 
 import re
 
+from app.agents.prompts import ESCALATION_MARKER
+
+# Fallback textual honesto quando o marcador aparece sem Reitor para assumir.
+HONEST_FALLBACK = (
+    "Nao tenho essa informacao confirmada. Recomendo procurar a secretaria "
+    "academica ou o setor responsavel."
+)
+
 # Padroes de prompt-injection na entrada. Deteccao barata antes de gastar LLM.
 _INJECTION_PATTERNS = [
     r"ignore.*(instru|regras|prompt)",
@@ -31,4 +39,8 @@ def guardrail_output(state: dict) -> dict:
     # Trava vazamento do bloco de seguranca caso o modelo tente reproduzi-lo.
     if "REGRAS DE SEGURANCA" in text:
         return {"response": REFUSAL}
+    # Chokepoint unico: o marcador de escalada nunca pode vazar ao usuario (sem
+    # Reitor disponivel, vira "nao sei" honesto). Cobre todos os caminhos do grafo.
+    if ESCALATION_MARKER in text:
+        return {"response": HONEST_FALLBACK}
     return {}

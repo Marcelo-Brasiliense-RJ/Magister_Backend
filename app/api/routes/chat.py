@@ -39,6 +39,11 @@ async def chat(body: ChatRequest, request: Request, db: Session = Depends(get_se
     if not chat_rate_limiter.allow(f"{body.embed_token}:{ip}"):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Muitas mensagens. Aguarde.")
 
+    # Bloqueia escrita em sessao-modelo: o prefixo "demo-" e reservado a templates
+    # somente leitura; o visitante recebe sua sessao pelo resume (uuid mintado).
+    if body.session_id and body.session_id.startswith(convo.RESERVED_SESSION_PREFIX):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "session_id reservado.")
+
     tutor = tutor_service.get_by_embed_token(db, body.embed_token)
     if not tutor or tutor.status != "active":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Tutor indisponivel.")
@@ -58,6 +63,9 @@ async def chat(body: ChatRequest, request: Request, db: Session = Depends(get_se
         for m in convo.recent_messages(db, session.id)
         if not (m.role == "user" and m.content == body.message)
     ]
+    # Escalada ao Reitor: so tutor tematico com fallback ligado pode escalar.
+    escalation_enabled = tutor.fallback_enabled and not tutor.is_fallback
+    fallback = tutor_service.get_fallback_tutor(db) if escalation_enabled else None
     state = {
         "tutor": {
             "system_instructions": tutor.system_instructions,
@@ -68,7 +76,14 @@ async def chat(body: ChatRequest, request: Request, db: Session = Depends(get_se
         "history": history,
         "rolling_summary": session.rolling_summary,
         "tokens_used": 0,
+        "escalation_enabled": escalation_enabled,
+        "session_id": session.id,
     }
+    if fallback:
+        state["fallback"] = {
+            "system_instructions": fallback.system_instructions,
+            "title": fallback.title,
+        }
     # graph.invoke e sincrono/CPU+IO; roda fora do event loop.
     result = await asyncio.to_thread(graph.invoke, state)
 

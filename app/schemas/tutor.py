@@ -11,6 +11,7 @@ class TutorCreate(BaseModel):
     system_instructions: str = ""
     sources: list[str] = []
     allowed_origins: list[str] = []
+    fallback_enabled: bool = True
 
 
 class TutorUpdate(BaseModel):
@@ -19,6 +20,8 @@ class TutorUpdate(BaseModel):
     system_instructions: str | None = None
     sources: list[str] | None = None
     allowed_origins: list[str] | None = None
+    # is_fallback nao entra aqui: definido no seed, nao editavel pela API.
+    fallback_enabled: bool | None = None
 
 
 class StatusUpdate(BaseModel):
@@ -33,6 +36,8 @@ class TutorRead(BaseModel):
     system_instructions: str
     sources: list[str]
     allowed_origins: list[str]
+    is_fallback: bool
+    fallback_enabled: bool
     embed_token: str
     created_at: datetime
     updated_at: datetime
