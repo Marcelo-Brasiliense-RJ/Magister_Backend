@@ -136,6 +136,7 @@ valores reais; `.env` e ignorado pelo git.
 | PUT | `/api/tutors/{id}` | JWT | Atualiza |
 | PATCH | `/api/tutors/{id}/status` | JWT | Ativa/desativa |
 | GET | `/api/tutors/{id}/embed` | JWT | Snippet `<iframe>` + embed token |
+| GET | `/api/embed/{embed_token}` | publica | Config publica do widget (titulo + saudacao) |
 | POST | `/api/chat` | embed token | Chat do widget (SSE) |
 
 ### Fluxo de embed ponta a ponta
@@ -174,9 +175,3 @@ pytest
   modelo fica como proximo passo (o transporte SSE ja esta pronto).
 - Admin unico via env (sem tabela de usuarios / refresh token).
 - CSP `frame-ancestors` da pagina do widget e responsabilidade do frontend.
-
-## Proximos passos
-
-PostgreSQL; refresh token / OAuth / multiplos admins; multi-tenant; observabilidade
-(LangSmith/OpenTelemetry); cache de fontes e de respostas; WebSocket como alternativa
-ao SSE; persistencia de estado/checkpoints no LangGraph; streaming token a token.
