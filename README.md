@@ -150,7 +150,7 @@ valores reais; `.env` e ignorado pelo git.
 
 ## Seguranca
 
-Ver `../SECURITY.md`. Resumo do que este backend implementa:
+Ver `SECURITY.md`. Resumo do que este backend implementa:
 
 - Segredos so por env; `.gitignore` + `.gitleaks.toml` + hook `pre-commit`.
 - CRUD admin exige JWT (assinatura + expiracao + role); widget usa so o embed token.
