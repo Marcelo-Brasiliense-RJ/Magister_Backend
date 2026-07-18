@@ -226,6 +226,33 @@ Ver `SECURITY.md`. Resumo do que este backend implementa:
 - SSRF guard no `fetch_source` (so http/https; bloqueia IPs privados/loopback/
   link-local, incluindo `169.254.169.254`; timeout e limite de tamanho).
 
+## Custo e limites
+
+O widget usa a chave de LLM do dono da instalacao (no `.env`, nunca no front nem
+em commit). Para nao transformar um demo publico num rombo de custo/cota, o backend
+aplica tres guardrails, todos por env (defaults em `app/config.py`):
+
+| Guardrail | Padrao | Efeito |
+|---|---|---|
+| `CHAT_RATE_LIMIT_PER_MIN` | 20 | Rate limit por `embed_token + IP`, aplicado **antes** de qualquer trabalho na rota de chat (`chat.py`). |
+| `MAX_OUTPUT_TOKENS` | 800 | Teto de tokens por resposta do modelo. |
+| `MAX_TOKENS_PER_SESSION` | 50000 | Orcamento de tokens por sessao. Ao estourar, corte gracioso (`budget_exceeded`) que devolve um erro SSE **sem chamar o LLM**. |
+
+Roteamento por custo (`app/core/llm.py`): providers ordenados por `priority`
+(menor = mais barato primeiro), Groq free tier na frente e OpenRouter como fallback,
+com **failover** automatico se um provider falha. `api_key` aceita varias chaves
+separadas por virgula (rotacao round-robin para diluir o free tier). Modelo por
+tarefa via `task_models` (persona usa 70B; guardrail/summarize podem usar modelos
+baratos).
+
+**Recomendacao para demo publico:** rodar na propria chave com Groq free tier (sem
+fatura, so cota) e manter o fallback tambem em modelos gratis, evitando custo real
+num pico de trafego.
+
+**Limite conhecido:** o orcamento e **por sessao**; nao ha teto global agregado, entao
+N sessoes somam N x `MAX_TOKENS_PER_SESSION`. Um teto diario global
+(`MAX_TOKENS_PER_DAY`) como backstop de abuso fica em *Proximos passos*.
+
 ## Testes e lint
 
 ```bash
@@ -248,4 +275,5 @@ PostgreSQL; refresh token / OAuth / multiplos admins; multi-tenant; observabilid
 ao SSE; persistencia de estado/checkpoints no LangGraph; streaming token a token;
 escalada por saida estruturada (`{answer, can_answer}`) em vez do marcador textual;
 TTL/limpeza das sessoes de demo clonadas (cada resume cria uma sessao nova, as linhas
-acumulam sem expurgo).
+acumulam sem expurgo); teto global de tokens/dia (`MAX_TOKENS_PER_DAY`) como backstop
+de abuso alem do orcamento por sessao.
