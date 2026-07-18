@@ -16,6 +16,8 @@ from app.core.security import SSRFError, assert_safe_url
 _settings = get_settings()
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+# UA descritivo: sem ele, sites com politica de User-Agent (ex.: Wikipedia) respondem 403.
+_USER_AGENT = "Magister/1.0 (+https://github.com/magister; tutor educacional)"
 
 
 def list_sources(sources: list[str]) -> list[str]:
@@ -28,7 +30,8 @@ def fetch_source(url: str) -> str:
     assert_safe_url(url)  # bloqueia esquema invalido e IPs internos/metadata
     try:
         timeout = _settings.fetch_timeout_seconds
-        with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+        headers = {"User-Agent": _USER_AGENT}
+        with httpx.Client(timeout=timeout, follow_redirects=False, headers=headers) as client:
             with client.stream("GET", url) as resp:
                 resp.raise_for_status()
                 chunks: list[bytes] = []
